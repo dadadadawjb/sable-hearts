@@ -1,4 +1,4 @@
-# 拱猪
+# 拱猪 Sable Hearts
 
 ![logo](assets/logo.png)
 
@@ -79,6 +79,8 @@ https://example.trycloudflare.com/room/A8K3QZ
 
 发给朋友即可。
 
+或者进入部署的免费[Render Web Service](https://sable-hearts.onrender.com)进行游戏。
+
 ## 游戏规则
 
 人数和牌数：
@@ -136,4 +138,4 @@ https://example.trycloudflare.com/room/A8K3QZ
 
 ## For Developers
 
-All codes are written by Codex with gpt-5.5 xhigh.
+All codes are written by Codex with gpt-5.5.
