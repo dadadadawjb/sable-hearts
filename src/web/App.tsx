@@ -9,6 +9,8 @@ type SeatState = {
   ready: boolean;
   connected: boolean;
   isHost: boolean;
+  isBot: boolean;
+  botDifficulty: 'foolish' | 'simple' | null;
   handCount: number;
   capturedCount: number;
   score: number;
@@ -86,6 +88,7 @@ export function App() {
   const [password, setPassword] = useState('');
   const [roomCodeInput, setRoomCodeInput] = useState(getRoomCodeFromPath());
   const [playerCount, setPlayerCount] = useState(4);
+  const [botDifficulty, setBotDifficulty] = useState<'foolish' | 'simple'>('simple');
   const [connected, setConnected] = useState(socket.connected);
   const [error, setError] = useState('');
   const [activeRuleCardId, setActiveRuleCardId] = useState<string | null>(null);
@@ -215,6 +218,20 @@ export function App() {
   async function startGame() {
     if (!roomSession) return;
     const response = await emitAck<Record<string, never>>('startGame', roomSession);
+    if (!response.ok) setError(response.error);
+  }
+
+  async function addBot(difficulty: 'foolish' | 'simple') {
+    if (!roomSession) return;
+    setError('');
+    const response = await emitAck<{ botPlayerId: string }>('addBot', { ...roomSession, difficulty });
+    if (!response.ok) setError(response.error);
+  }
+
+  async function removeBot(botPlayerId: string) {
+    if (!roomSession) return;
+    setError('');
+    const response = await emitAck<Record<string, never>>('removeBot', { ...roomSession, botPlayerId });
     if (!response.ok) setError(response.error);
   }
 
@@ -459,13 +476,34 @@ export function App() {
                 return (
                   <div key={index} className="seat">
                     <div>
-                      <strong>{seat?.name ?? '空位'}</strong>
+                      <strong>
+                        {seat ? (seat.isBot ? `🤖 ${seat.name}` : seat.name) : '空位'}
+                      </strong>
                       <span>{seat?.isHost ? '房主' : `座位 ${index + 1}`}</span>
                     </div>
                     <div className="seatStats">
-                      <span>{seat ? (seat.connected ? '在线' : '离线') : ''}</span>
+                      <span>{seat ? (seat.isBot ? '人机' : seat.connected ? '在线' : '离线') : ''}</span>
                       <span>{seat ? (seat.ready ? '已准备' : '未准备') : ''}</span>
                     </div>
+                    {isHost && seat?.isBot ? (
+                      <button className="secondaryButton" onClick={() => removeBot(seat.playerId)}>
+                        移除
+                      </button>
+                    ) : null}
+                    {isHost && !seat ? (
+                      <div className="botAddRow">
+                        <select
+                          value={botDifficulty}
+                          onChange={(event) => setBotDifficulty(event.target.value as 'foolish' | 'simple')}
+                        >
+                          <option value="foolish">愚蠢</option>
+                          <option value="simple">简单</option>
+                        </select>
+                        <button className="secondaryButton" onClick={() => addBot(botDifficulty)}>
+                          添加人机
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}

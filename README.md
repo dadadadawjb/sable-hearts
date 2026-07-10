@@ -81,6 +81,17 @@ https://example.trycloudflare.com/room/A8K3QZ
 
 或者进入部署的免费[Render Web Service](https://sable-hearts.onrender.com)进行游戏。
 
+## 添加人机
+
+房主创建房间后，在开始游戏前，除了等待真实玩家加入，也可以在空座位上添加人机来替代真实玩家。人机有两档难度：
+
+```text
+愚蠢：仅在合法牌中随机出牌
+简单：简单启发式，会跟花色、尽量少送分、垫牌时优先甩大分牌
+```
+
+人机只能在开局前添加或移除，游戏进行中不支持替换真人。
+
 ## 游戏规则
 
 人数和牌数：
@@ -135,7 +146,3 @@ https://example.trycloudflare.com/room/A8K3QZ
 
 ![screenshot](assets/screenshot1.png)
 ![screenshot](assets/screenshot2.jpg)
-
-## For Developers
-
-All codes are written by Codex with gpt-5.5.

@@ -1,3 +1,4 @@
+export * from './bot';
 export * from './cards';
 export * from './config';
 export * from './deck';

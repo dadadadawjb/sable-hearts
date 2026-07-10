@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import { getLegalCards, playCard, createGame, type GameState } from '../core/game';
 import { calculateCoins, calculateScore, isClubTen, rawCardPoint } from '../core/scoring';
 import { isSupportedPlayerCount, type PlayerCount } from '../core/config';
+import { chooseBotCard, isBotDifficulty, type BotDifficulty } from '../core/bot';
 import { getUserFromToken, loginUser, registerUser, requireAuth, type AuthSession } from './auth';
 
 interface Seat {
@@ -19,6 +20,8 @@ interface Seat {
   ready: boolean;
   connected: boolean;
   socketId: string | null;
+  isBot: boolean;
+  botDifficulty: BotDifficulty | null;
 }
 
 interface Room {
@@ -95,6 +98,8 @@ io.on('connection', (socket) => {
         ready: false,
         connected: true,
         socketId: socket.id,
+        isBot: false,
+        botDifficulty: null,
       };
 
       const room: Room = {
@@ -138,6 +143,8 @@ io.on('connection', (socket) => {
         ready: false,
         connected: true,
         socketId: socket.id,
+        isBot: false,
+        botDifficulty: null,
       };
 
       room.seats.push(seat);
@@ -169,6 +176,65 @@ io.on('connection', (socket) => {
       return {};
     });
   });
+
+  socket.on(
+    'addBot',
+    (payload: { roomCode?: string; playerId?: string; token?: string; difficulty?: string }, ack?: Ack<{ botPlayerId: string }>) => {
+      reply(ack, () => {
+        const { room, seat } = authenticate(payload);
+        if (room.hostPlayerId !== seat.playerId) {
+          throw new Error('只有房主可以添加人机');
+        }
+        if (room.game) {
+          throw new Error('游戏已经开始');
+        }
+        if (room.seats.length >= room.playerCount) {
+          throw new Error('房间已满');
+        }
+        const difficulty: BotDifficulty = isBotDifficulty(payload.difficulty) ? payload.difficulty : 'simple';
+
+        const botPlayerId = createId();
+        const botSeat: Seat = {
+          playerId: botPlayerId,
+          userId: `bot:${botPlayerId}`,
+          token: createId(),
+          name: createBotName(room, difficulty),
+          ready: true,
+          connected: true,
+          socketId: null,
+          isBot: true,
+          botDifficulty: difficulty,
+        };
+
+        room.seats.push(botSeat);
+        broadcastRoom(room.code);
+        return { botPlayerId };
+      });
+    },
+  );
+
+  socket.on(
+    'removeBot',
+    (payload: { roomCode?: string; playerId?: string; token?: string; botPlayerId?: string }, ack?: Ack<Record<string, never>>) => {
+      reply(ack, () => {
+        const { room, seat } = authenticate(payload);
+        if (room.hostPlayerId !== seat.playerId) {
+          throw new Error('只有房主可以移除人机');
+        }
+        if (room.game) {
+          throw new Error('游戏已经开始');
+        }
+        const target = room.seats.find((candidate) => candidate.playerId === payload.botPlayerId);
+        if (!target || !target.isBot) {
+          throw new Error('人机不存在');
+        }
+
+        room.seats = room.seats.filter((candidate) => candidate.playerId !== target.playerId);
+        broadcastRoom(room.code);
+        return {};
+      });
+    },
+  );
 
   socket.on(
     'setRoomSettings',
@@ -215,6 +281,7 @@ io.on('connection', (socket) => {
       room.game = createRoomGame(room);
 
       broadcastRoom(room.code);
+      maybeRunBots(room.code);
       return {};
     });
   });
@@ -231,6 +298,7 @@ io.on('connection', (socket) => {
 
       room.game = playCard(room.game, seat.playerId, payload.cardId);
       broadcastRoom(room.code);
+      maybeRunBots(room.code);
       return {};
     });
   });
@@ -250,6 +318,7 @@ io.on('connection', (socket) => {
 
       room.game = createRoomGame(room);
       broadcastRoom(room.code);
+      maybeRunBots(room.code);
       return {};
     });
   });
@@ -279,6 +348,8 @@ function publicRoomState(room: Room, viewerId: string) {
       ready: seat.ready,
       connected: seat.connected,
       isHost: seat.playerId === room.hostPlayerId,
+      isBot: seat.isBot,
+      botDifficulty: seat.botDifficulty,
       handCount: gamePlayer?.hand.length ?? 0,
       capturedCount: gamePlayer?.captured.length ?? 0,
       score: game?.status === 'finished' ? gamePlayer?.score ?? 0 : preview?.score ?? 0,
@@ -357,6 +428,55 @@ function createRoomGame(room: Room): GameState {
     })),
     room.playerCount,
   );
+}
+
+const BOT_PLAY_DELAY_MS = 700;
+const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function createBotName(room: Room, difficulty: BotDifficulty): string {
+  const label = difficulty === 'foolish' ? '愚蠢' : '简单';
+  const existing = room.seats.filter((seat) => seat.isBot).length;
+  return `机器人${existing + 1}（${label}）`;
+}
+
+/**
+ * When the current player is a bot, schedule its move. After playing it
+ * re-checks, so a chain of bots plays one after another until it is a human's
+ * turn or the game ends. Only one pending timer exists per room at a time.
+ */
+function maybeRunBots(roomCode: string): void {
+  const room = rooms.get(roomCode);
+  if (!room || !room.game || room.game.status !== 'playing') return;
+
+  const currentId = room.game.currentPlayerId;
+  if (!currentId) return;
+
+  const seat = room.seats.find((candidate) => candidate.playerId === currentId);
+  if (!seat || !seat.isBot || !seat.botDifficulty) return;
+
+  if (botTimers.has(roomCode)) return;
+
+  const timer = setTimeout(() => {
+    botTimers.delete(roomCode);
+    const activeRoom = rooms.get(roomCode);
+    if (!activeRoom || !activeRoom.game || activeRoom.game.status !== 'playing') return;
+
+    const activeSeat = activeRoom.seats.find((candidate) => candidate.playerId === activeRoom.game?.currentPlayerId);
+    if (!activeSeat || !activeSeat.isBot || !activeSeat.botDifficulty) return;
+
+    try {
+      const card = chooseBotCard(activeRoom.game, activeSeat.playerId, activeSeat.botDifficulty);
+      activeRoom.game = playCard(activeRoom.game, activeSeat.playerId, card.id);
+      broadcastRoom(roomCode);
+    } catch (error) {
+      console.error(`Bot play failed in room ${roomCode}:`, error);
+      return;
+    }
+
+    maybeRunBots(roomCode);
+  }, BOT_PLAY_DELAY_MS);
+
+  botTimers.set(roomCode, timer);
 }
 
 function defaultRoomSettings(): RoomSettings {

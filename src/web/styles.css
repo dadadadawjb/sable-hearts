@@ -312,6 +312,16 @@ select {
   gap: 8px;
 }
 
+.botAddRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.botAddRow select {
+  flex: 1;
+}
+
 .seatScoreCards {
   display: flex;
   flex-wrap: wrap;

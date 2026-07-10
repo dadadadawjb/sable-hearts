@@ -4,6 +4,7 @@ import {
   buildDeck,
   calculateScore,
   calculateCoins,
+  chooseBotCard,
   createCard,
   createGame,
   getGameConfig,
@@ -13,6 +14,7 @@ import {
   type Card,
   type GameState,
   type PlayerCount,
+  type TrickPlay,
 } from '../src/core';
 
 describe('deck configuration', () => {
@@ -120,6 +122,88 @@ describe('scoring', () => {
     expect(coins[3]).toBeCloseTo(-66.6667);
   });
 });
+
+describe('bot decisions', () => {
+  it('always returns a legal card for both difficulties', () => {
+    const game = createGame(makePlayers(4), 4, 'bot-seed');
+    for (const difficulty of ['foolish', 'simple'] as const) {
+      const chosen = chooseBotCard(game, game.currentPlayerId!, difficulty);
+      const legalIds = getLegalCards(game, game.currentPlayerId!).map((card) => card.id);
+      expect(legalIds).toContain(chosen.id);
+    }
+  });
+
+  it('is deterministic for the foolish difficulty', () => {
+    const game = createGame(makePlayers(4), 4, 'bot-seed');
+    const first = chooseBotCard(game, game.currentPlayerId!, 'foolish');
+    const second = chooseBotCard(game, game.currentPlayerId!, 'foolish');
+    expect(first.id).toBe(second.id);
+  });
+
+  it('follows the lead suit when required', () => {
+    const state = withTrick(
+      makeState([
+        [heart(3, 0), spade(14, 0)],
+        [heart(9, 0), heart(4, 0), club(14, 0)],
+        [spade(2, 0)],
+        [diamond(11, 0)],
+      ]),
+      'p2',
+      [{ playerId: 'p1', card: heart(3, 0), order: 0 }],
+    );
+
+    for (const difficulty of ['foolish', 'simple'] as const) {
+      const chosen = chooseBotCard(state, 'p2', difficulty);
+      expect(chosen.suit).toBe('heart');
+    }
+  });
+
+  it('ducks under the current winner instead of taking a clean trick', () => {
+    const state = withTrick(
+      makeState([
+        [club(13, 0)],
+        [club(9, 0), club(4, 0)],
+        [club(2, 0)],
+        [club(3, 0)],
+      ]),
+      'p2',
+      [{ playerId: 'p1', card: club(13, 0), order: 0 }],
+    );
+
+    const chosen = chooseBotCard(state, 'p2', 'simple');
+    // Both club 9 and 4 lose to the king; the bot sheds the higher safe card.
+    expect(chosen.id).toBe(club(9, 0).id);
+  });
+
+  it('discards the most dangerous card when it cannot follow suit', () => {
+    const state = withTrick(
+      makeState([
+        [club(13, 0)],
+        [spade(12, 0), heart(14, 0), diamond(2, 0)],
+        [club(2, 0)],
+        [club(3, 0)],
+      ]),
+      'p2',
+      [{ playerId: 'p1', card: club(13, 0), order: 0 }],
+    );
+
+    const chosen = chooseBotCard(state, 'p2', 'simple');
+    // The queen of spades (猪, -100) is the most dangerous card to hold.
+    expect(chosen.id).toBe(spade(12, 0).id);
+  });
+});
+
+function withTrick(state: GameState, currentPlayerId: string, plays: TrickPlay[]): GameState {
+  return {
+    ...state,
+    currentPlayerId,
+    currentTrick: {
+      index: 0,
+      leaderId: plays[0]?.playerId ?? currentPlayerId,
+      plays,
+    },
+  };
+}
 
 function makePlayers(playerCount: PlayerCount) {
   return Array.from({ length: playerCount }, (_, index) => ({

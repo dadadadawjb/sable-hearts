@@ -70,6 +70,12 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
   - Barrel export for the core modules.
   - Tests and frontend code can import core capabilities through `../src/core` or `../core`.
 
+- `src/core/bot.ts`
+  - Pure, deterministic bot decision logic.
+  - `chooseBotCard(state, playerId, difficulty)` returns the card a bot should play.
+  - Two difficulties: `foolish` picks any legal card (deterministically from the game seed) and `simple` uses lightweight heuristics that avoid throwing away point cards.
+  - Start here when tuning or adding bot difficulties.
+
 ### `src/server/`
 
 `src/server` is the backend layer and runs in Node.js.
@@ -78,7 +84,8 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
   - Main backend entry point.
   - Creates the Express app, HTTP server, and Socket.IO server.
   - Manages in-memory rooms through `rooms`.
-  - Handles Socket.IO events for registration, login, auth resume, room creation, room join, reconnect, ready state, game start, card play, and game restart.
+  - Handles Socket.IO events for registration, login, auth resume, room creation, room join, reconnect, ready state, adding/removing bots, game start, card play, and game restart.
+  - Bots are seats with `isBot: true` and no socket. `addBot`/`removeBot` are host-only and only allowed before the game starts. `maybeRunBots` schedules a bot's move (via `chooseBotCard`) whenever the current player is a bot, chaining through consecutive bot turns.
   - `publicRoomState` builds the room state for each viewer so other players' hands are not sent to the current player.
   - After a production build, if `dist/` exists, this file serves the frontend static files.
 
