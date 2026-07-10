@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { cardLabel } from '../core/cards';
-import { getLegalCards, playCard, createGame, type GameState } from '../core/game';
+import { getLegalCards, playCard, createGame, pickLowestScoreLeader, type GameState } from '../core/game';
 import { calculateCoins, calculateScore, isClubTen, rawCardPoint } from '../core/scoring';
 import { isSupportedPlayerCount, type PlayerCount } from '../core/config';
 import { chooseBotDecision, isBotDifficulty, type BotDecision, type BotDifficulty } from '../core/bot';
@@ -318,7 +318,8 @@ io.on('connection', (socket) => {
         throw new Error('本局还没有结束');
       }
 
-      room.game = createRoomGame(room);
+      const leaderId = pickLowestScoreLeader(room.game.players);
+      room.game = createRoomGame(room, leaderId);
       broadcastRoom(room.code);
       maybeRunBots(room.code);
       return {};
@@ -422,13 +423,16 @@ function normalizeRoomCode(roomCode?: string): string {
   return String(roomCode ?? '').trim().toUpperCase();
 }
 
-function createRoomGame(room: Room): GameState {
+function createRoomGame(room: Room, leaderId?: string): GameState {
   return createGame(
     room.seats.map((candidate) => ({
       id: candidate.playerId,
       name: candidate.name,
     })),
     room.playerCount,
+    undefined,
+    undefined,
+    leaderId,
   );
 }
 

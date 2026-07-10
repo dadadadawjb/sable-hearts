@@ -12,6 +12,7 @@ import {
   createGame,
   getGameConfig,
   getLegalCards,
+  pickLowestScoreLeader,
   playCard,
   resolveTrick,
   type Card,
@@ -33,6 +34,30 @@ describe('deck configuration', () => {
 
     const game = createGame(makePlayers(playerCount), playerCount, 'fixed-seed');
     expect(game.players.every((player) => player.hand.length === handSize)).toBe(true);
+  });
+});
+
+describe('game leader', () => {
+  it('defaults to the first player when no leader is specified', () => {
+    const game = createGame(makePlayers(4), 4, 'leader-seed');
+    expect(game.currentPlayerId).toBe('p1');
+    expect(game.currentTrick?.leaderId).toBe('p1');
+  });
+
+  it('uses the specified leader when restarting', () => {
+    const game = createGame(makePlayers(4), 4, 'leader-seed', 'game-id', 'p3');
+    expect(game.currentPlayerId).toBe('p3');
+    expect(game.currentTrick?.leaderId).toBe('p3');
+  });
+
+  it('picks the player with the lowest score as the next leader', () => {
+    const leaderId = pickLowestScoreLeader([
+      { id: 'p1', score: 120 },
+      { id: 'p2', score: -30 },
+      { id: 'p3', score: 45 },
+      { id: 'p4', score: -30 },
+    ]);
+    expect(leaderId).toBe('p2');
   });
 });
 

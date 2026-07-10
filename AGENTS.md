@@ -53,10 +53,11 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
   - `shuffleDeck` is reproducible: the same seed produces the same shuffled deck, which helps testing and debugging.
 
 - `src/core/game.ts`
-  - Core game state machine.
-  - Defines `GameState`, player state, current trick, completed tricks, and related types.
-  - `createGame` creates a game and deals cards.
-  - `getLegalCards` determines which cards a player can currently play.
+ - Core game state machine.
+ - Defines `GameState`, player state, current trick, completed tricks, and related types.
+ - `createGame` creates a game and deals cards; an optional `leaderId` sets who leads the first trick.
+ - `pickLowestScoreLeader` chooses the player with the lowest score as the next first leader (seat order breaks ties).
+ - `getLegalCards` determines which cards a player can currently play.
   - `playCard` applies one card play and updates the current trick or completes a trick.
   - `resolveTrick` determines the winner of a trick.
   - When a game ends, this module calls scoring logic and changes the state to `finished`.

@@ -45,11 +45,22 @@ export interface GameState {
   completedTricks: CompletedTrick[];
 }
 
+export function pickLowestScoreLeader(players: Array<{ id: string; score: number }>): string {
+  let leader = players[0];
+  for (const player of players.slice(1)) {
+    if (player.score < leader.score) {
+      leader = player;
+    }
+  }
+  return leader.id;
+}
+
 export function createGame(
   players: PlayerInfo[],
   playerCount: PlayerCount,
   seed = randomSeed(),
   id = randomSeed(),
+  leaderId?: string,
 ): GameState {
   if (players.length !== playerCount) {
     throw new Error(`Expected ${playerCount} players, got ${players.length}`);
@@ -72,7 +83,8 @@ export function createGame(
     scoreBreakdown: null,
   }));
 
-  const leaderId = playerStates[0].id;
+  const resolvedLeaderId =
+    leaderId && playerStates.some((player) => player.id === leaderId) ? leaderId : playerStates[0].id;
 
   return {
     id,
@@ -80,10 +92,10 @@ export function createGame(
     status: 'playing',
     config,
     players: playerStates,
-    currentPlayerId: leaderId,
+    currentPlayerId: resolvedLeaderId,
     currentTrick: {
       index: 0,
-      leaderId,
+      leaderId: resolvedLeaderId,
       plays: [],
     },
     completedTricks: [],
