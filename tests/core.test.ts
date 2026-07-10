@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeHeartCards,
+  BOT_DIFFICULTIES,
+  BOT_STRATEGY_CONFIG,
   buildDeck,
   calculateScore,
   calculateCoins,
   chooseBotCard,
+  chooseBotDecision,
   createCard,
   createGame,
   getGameConfig,
@@ -124,20 +127,22 @@ describe('scoring', () => {
 });
 
 describe('bot decisions', () => {
-  it('always returns a legal card for both difficulties', () => {
+  it('always returns a legal card for every difficulty', () => {
     const game = createGame(makePlayers(4), 4, 'bot-seed');
-    for (const difficulty of ['foolish', 'simple'] as const) {
+    for (const difficulty of BOT_DIFFICULTIES) {
       const chosen = chooseBotCard(game, game.currentPlayerId!, difficulty);
       const legalIds = getLegalCards(game, game.currentPlayerId!).map((card) => card.id);
       expect(legalIds).toContain(chosen.id);
     }
   });
 
-  it('is deterministic for the foolish difficulty', () => {
+  it('is deterministic for every difficulty', () => {
     const game = createGame(makePlayers(4), 4, 'bot-seed');
-    const first = chooseBotCard(game, game.currentPlayerId!, 'foolish');
-    const second = chooseBotCard(game, game.currentPlayerId!, 'foolish');
-    expect(first.id).toBe(second.id);
+    for (const difficulty of BOT_DIFFICULTIES) {
+      const first = chooseBotCard(game, game.currentPlayerId!, difficulty);
+      const second = chooseBotCard(game, game.currentPlayerId!, difficulty);
+      expect(first.id).toBe(second.id);
+    }
   });
 
   it('follows the lead suit when required', () => {
@@ -152,7 +157,7 @@ describe('bot decisions', () => {
       [{ playerId: 'p1', card: heart(3, 0), order: 0 }],
     );
 
-    for (const difficulty of ['foolish', 'simple'] as const) {
+    for (const difficulty of BOT_DIFFICULTIES) {
       const chosen = chooseBotCard(state, 'p2', difficulty);
       expect(chosen.suit).toBe('heart');
     }
@@ -170,9 +175,11 @@ describe('bot decisions', () => {
       [{ playerId: 'p1', card: club(13, 0), order: 0 }],
     );
 
-    const chosen = chooseBotCard(state, 'p2', 'simple');
-    // Both club 9 and 4 lose to the king; the bot sheds the higher safe card.
-    expect(chosen.id).toBe(club(9, 0).id);
+    for (const difficulty of ['simple', 'medium', 'hard'] as const) {
+      const chosen = chooseBotCard(state, 'p2', difficulty);
+      // Both club 9 and 4 lose to the king; the bot sheds the higher safe card.
+      expect(chosen.id).toBe(club(9, 0).id);
+    }
   });
 
   it('discards the most dangerous card when it cannot follow suit', () => {
@@ -187,9 +194,103 @@ describe('bot decisions', () => {
       [{ playerId: 'p1', card: club(13, 0), order: 0 }],
     );
 
-    const chosen = chooseBotCard(state, 'p2', 'simple');
-    // The queen of spades (猪, -100) is the most dangerous card to hold.
-    expect(chosen.id).toBe(spade(12, 0).id);
+    for (const difficulty of ['simple', 'medium', 'hard'] as const) {
+      const chosen = chooseBotCard(state, 'p2', difficulty);
+      // The queen of spades (猪, -100) is the most dangerous card to hold.
+      expect(chosen.id).toBe(spade(12, 0).id);
+    }
+  });
+
+  it('keeps medium and hard decisions independent of hidden opponent cards', () => {
+    const firstState = createGame(makePlayers(4), 4, 'hidden-information');
+    const secondState: GameState = {
+      ...firstState,
+      players: firstState.players.map((player) => ({ ...player, hand: [...player.hand] })),
+    };
+    const secondHand = secondState.players[1].hand;
+    secondState.players[1].hand = secondState.players[2].hand;
+    secondState.players[2].hand = secondHand;
+
+    for (const difficulty of ['medium', 'hard'] as const) {
+      expect(chooseBotCard(firstState, 'p1', difficulty).id).toBe(chooseBotCard(secondState, 'p1', difficulty).id);
+    }
+  });
+
+  it('supports hard decisions with two decks and six players', () => {
+    const game = createGame(makePlayers(6), 6, 'double-deck-bot');
+    const chosen = chooseBotCard(game, game.currentPlayerId!, 'hard');
+    expect(getLegalCards(game, game.currentPlayerId!).map((card) => card.id)).toContain(chosen.id);
+  });
+
+  it('reports a structured trace for every difficulty', () => {
+    const game = createGame(makePlayers(4), 4, 'bot-trace');
+    for (const difficulty of BOT_DIFFICULTIES) {
+      const decision = chooseBotDecision(game, game.currentPlayerId!, difficulty);
+      expect(decision.trace.difficulty).toBe(difficulty);
+      expect(decision.trace.selectedCardId).toBe(decision.card.id);
+      expect(decision.trace.legalCardIds).toContain(decision.card.id);
+      expect(decision.trace.reason).not.toBe('');
+      if (difficulty === 'hard') {
+        expect(decision.trace.sampledDeals).toBe(
+          Math.floor(
+            BOT_STRATEGY_CONFIG.hard.singleDeck.openingRolloutBudget /
+              BOT_STRATEGY_CONFIG.hard.singleDeck.candidateLimit,
+          ),
+        );
+        expect(decision.trace.evaluations).toHaveLength(BOT_STRATEGY_CONFIG.hard.singleDeck.candidateLimit);
+        expect(decision.trace.rolloutBudget).toBe(BOT_STRATEGY_CONFIG.hard.singleDeck.openingRolloutBudget);
+        expect(decision.trace.rolloutCount).toBe(BOT_STRATEGY_CONFIG.hard.singleDeck.openingRolloutBudget);
+      }
+    }
+  });
+
+  it('redistributes the hard rollout budget when fewer candidates are legal', () => {
+    const game = createGame(makePlayers(4), 4, 'dynamic-rollout-budget');
+    const nextPlayer = game.players[1];
+    const leadCard = game.players[0].hand
+      .map((card) => ({
+        card,
+        followCount: nextPlayer.hand.filter((candidate) => candidate.suit === card.suit).length,
+      }))
+      .filter(({ followCount }) => followCount > 1 && followCount < BOT_STRATEGY_CONFIG.hard.singleDeck.candidateLimit)
+      .sort((a, b) => a.followCount - b.followCount)[0];
+    if (!leadCard) throw new Error('Test seed did not produce a suitable lead suit');
+
+    const afterLead = playCard(game, game.currentPlayerId!, leadCard.card.id);
+    const legalCount = getLegalCards(afterLead, afterLead.currentPlayerId!).length;
+    const decision = chooseBotDecision(afterLead, afterLead.currentPlayerId!, 'hard');
+    const expectedSamples = Math.floor(BOT_STRATEGY_CONFIG.hard.singleDeck.openingRolloutBudget / legalCount);
+
+    expect(decision.trace.evaluations).toHaveLength(legalCount);
+    expect(decision.trace.sampledDeals).toBe(expectedSamples);
+    expect(decision.trace.rolloutCount).toBe(expectedSamples * legalCount);
+    expect(decision.trace.rolloutCount).toBeLessThanOrEqual(
+      BOT_STRATEGY_CONFIG.hard.singleDeck.openingRolloutBudget,
+    );
+  });
+
+  it('increases the hard rollout budget as hands get shorter', () => {
+    let game = createGame(makePlayers(4), 4, 'progressive-rollout-budget');
+    while (game.status === 'playing') {
+      const currentId = game.currentPlayerId!;
+      const currentPlayer = game.players.find((player) => player.id === currentId)!;
+      const legal = getLegalCards(game, currentId);
+      if (currentPlayer.hand.length <= 6 && legal.length > 1) break;
+      game = playCard(game, currentId, chooseBotCard(game, currentId, 'simple').id);
+    }
+    if (game.status !== 'playing' || !game.currentPlayerId) {
+      throw new Error('Test seed did not produce a suitable late-game decision');
+    }
+
+    const currentPlayer = game.players.find((player) => player.id === game.currentPlayerId)!;
+    const expectedBudget = Math.round(
+      BOT_STRATEGY_CONFIG.hard.singleDeck.openingRolloutBudget *
+        (game.config.handSize / currentPlayer.hand.length),
+    );
+    const decision = chooseBotDecision(game, game.currentPlayerId, 'hard');
+
+    expect(decision.trace.rolloutBudget).toBe(expectedBudget);
+    expect(decision.trace.rolloutBudget).toBeGreaterThan(BOT_STRATEGY_CONFIG.hard.singleDeck.openingRolloutBudget);
   });
 });
 

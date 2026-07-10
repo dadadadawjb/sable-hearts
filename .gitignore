@@ -2,5 +2,6 @@ node_modules/
 dist/
 .npm-cache/
 data/
+logs/
 .env
 *.log

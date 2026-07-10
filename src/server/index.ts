@@ -1,15 +1,17 @@
 import cors from 'cors';
 import express from 'express';
 import { existsSync } from 'node:fs';
+import { appendFile, mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
+import { cardLabel } from '../core/cards';
 import { getLegalCards, playCard, createGame, type GameState } from '../core/game';
 import { calculateCoins, calculateScore, isClubTen, rawCardPoint } from '../core/scoring';
 import { isSupportedPlayerCount, type PlayerCount } from '../core/config';
-import { chooseBotCard, isBotDifficulty, type BotDifficulty } from '../core/bot';
+import { chooseBotDecision, isBotDifficulty, type BotDecision, type BotDifficulty } from '../core/bot';
 import { getUserFromToken, loginUser, registerUser, requireAuth, type AuthSession } from './auth';
 
 interface Seat {
@@ -432,11 +434,17 @@ function createRoomGame(room: Room): GameState {
 
 const BOT_PLAY_DELAY_MS = 700;
 const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let botLogWriteQueue = Promise.resolve();
 
 function createBotName(room: Room, difficulty: BotDifficulty): string {
-  const label = difficulty === 'foolish' ? '愚蠢' : '简单';
+  const labels: Record<BotDifficulty, string> = {
+    foolish: '愚蠢',
+    simple: '简单',
+    medium: '中等',
+    hard: '困难',
+  };
   const existing = room.seats.filter((seat) => seat.isBot).length;
-  return `机器人${existing + 1}（${label}）`;
+  return `机器人${existing + 1}（${labels[difficulty]}）`;
 }
 
 /**
@@ -465,8 +473,11 @@ function maybeRunBots(roomCode: string): void {
     if (!activeSeat || !activeSeat.isBot || !activeSeat.botDifficulty) return;
 
     try {
-      const card = chooseBotCard(activeRoom.game, activeSeat.playerId, activeSeat.botDifficulty);
-      activeRoom.game = playCard(activeRoom.game, activeSeat.playerId, card.id);
+      const gameBeforePlay = activeRoom.game;
+      const startedAt = Date.now();
+      const decision = chooseBotDecision(gameBeforePlay, activeSeat.playerId, activeSeat.botDifficulty);
+      activeRoom.game = playCard(gameBeforePlay, activeSeat.playerId, decision.card.id);
+      writeBotDecisionLog(activeRoom, activeSeat, gameBeforePlay, decision, Date.now() - startedAt);
       broadcastRoom(roomCode);
     } catch (error) {
       console.error(`Bot play failed in room ${roomCode}:`, error);
@@ -477,6 +488,67 @@ function maybeRunBots(roomCode: string): void {
   }, BOT_PLAY_DELAY_MS);
 
   botTimers.set(roomCode, timer);
+}
+
+function writeBotDecisionLog(
+  room: Room,
+  seat: Seat,
+  state: GameState,
+  decision: BotDecision,
+  decisionTimeMs: number,
+): void {
+  const player = state.players.find((candidate) => candidate.id === seat.playerId);
+  const cardById = new Map(player?.hand.map((card) => [card.id, card]) ?? []);
+  for (const play of state.currentTrick?.plays ?? []) cardById.set(play.card.id, play.card);
+  const formatCardLabel = (cardId: string) => {
+    const card = cardById.get(cardId);
+    return card ? cardLabel(card) : '未知牌';
+  };
+  const loggedEvaluations = decision.trace.evaluations?.map(({ cardId, ...evaluation }) => ({
+    card: formatCardLabel(cardId),
+    ...evaluation,
+  }));
+  const entry = {
+    trickIndex: state.currentTrick?.index ?? null,
+    playIndex: state.currentTrick?.plays.length ?? null,
+    playerName: seat.name,
+    decisionTimeMs,
+    hand: player?.hand.map(cardLabel).join(' ') ?? '',
+    currentTrick: state.currentTrick?.plays.map((play) => cardLabel(play.card)).join(' ') ?? '',
+    legalCards: decision.trace.legalCardIds.map(formatCardLabel).join(' '),
+    selectedCard: formatCardLabel(decision.card.id),
+    decision: {
+      strategy: decision.trace.strategy,
+      reason: decision.trace.reason,
+      evaluations: loggedEvaluations,
+      deterministicIndex: decision.trace.deterministicIndex,
+      sampledDeals: decision.trace.sampledDeals,
+      rolloutBudget: decision.trace.rolloutBudget,
+      rolloutCount: decision.trace.rolloutCount,
+      fallbackTo: decision.trace.fallbackTo,
+    },
+  };
+  const roomCreatedAt = new Date(room.createdAt);
+  const date = [
+    roomCreatedAt.getFullYear(),
+    String(roomCreatedAt.getMonth() + 1).padStart(2, '0'),
+    String(roomCreatedAt.getDate()).padStart(2, '0'),
+  ].join('-');
+  const time = [
+    String(roomCreatedAt.getHours()).padStart(2, '0'),
+    String(roomCreatedAt.getMinutes()).padStart(2, '0'),
+    String(roomCreatedAt.getSeconds()).padStart(2, '0'),
+    String(roomCreatedAt.getMilliseconds()).padStart(3, '0'),
+  ].join('-');
+  const logDirectory = path.resolve(process.cwd(), 'logs');
+  const logPath = path.join(logDirectory, `bot-decisions-${date}_${time}-${room.code}.jsonl`);
+  const operation = botLogWriteQueue.then(async () => {
+    await mkdir(logDirectory, { recursive: true });
+    await appendFile(logPath, `${JSON.stringify(entry)}\n`, 'utf8');
+  });
+  botLogWriteQueue = operation.catch((error) => {
+    console.error('Failed to write bot decision log:', error);
+  });
 }
 
 function defaultRoomSettings(): RoomSettings {

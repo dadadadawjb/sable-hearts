@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type PointerEvent } from 'react';
 import { io } from 'socket.io-client';
-import { cardLabel, isRedSuit, rankLabel, suitLabel, type Card } from '../core';
+import packageJson from '../../package.json';
+import { cardLabel, isRedSuit, rankLabel, suitLabel, type BotDifficulty, type Card } from '../core';
 
 type SeatState = {
   seat: number;
@@ -10,7 +11,7 @@ type SeatState = {
   connected: boolean;
   isHost: boolean;
   isBot: boolean;
-  botDifficulty: 'foolish' | 'simple' | null;
+  botDifficulty: BotDifficulty | null;
   handCount: number;
   capturedCount: number;
   score: number;
@@ -78,6 +79,8 @@ const socket = io(serverUrl, {
   autoConnect: true,
 });
 
+const appVersion = packageJson.version;
+
 export function App() {
   const [roomState, setRoomState] = useState<PublicRoomState | null>(null);
   const [roomSession, setRoomSession] = useState<RoomSession | null>(null);
@@ -88,7 +91,7 @@ export function App() {
   const [password, setPassword] = useState('');
   const [roomCodeInput, setRoomCodeInput] = useState(getRoomCodeFromPath());
   const [playerCount, setPlayerCount] = useState(4);
-  const [botDifficulty, setBotDifficulty] = useState<'foolish' | 'simple'>('simple');
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('simple');
   const [connected, setConnected] = useState(socket.connected);
   const [error, setError] = useState('');
   const [activeRuleCardId, setActiveRuleCardId] = useState<string | null>(null);
@@ -221,7 +224,7 @@ export function App() {
     if (!response.ok) setError(response.error);
   }
 
-  async function addBot(difficulty: 'foolish' | 'simple') {
+  async function addBot(difficulty: BotDifficulty) {
     if (!roomSession) return;
     setError('');
     const response = await emitAck<{ botPlayerId: string }>('addBot', { ...roomSession, difficulty });
@@ -279,7 +282,9 @@ export function App() {
           <img className="brandLogo" src="/assets/logo.png" alt="" aria-hidden="true" />
           <div>
             <h1>拱猪</h1>
-            <p>{roomState ? `房间 ${roomState.roomCode}` : auth ? `账号 ${auth.user.username}` : '线上牌桌'}</p>
+            <p>
+              {roomState ? `房间 ${roomState.roomCode}` : auth ? `账号 ${auth.user.username}` : '线上牌桌'} · v{appVersion}
+            </p>
           </div>
         </div>
         <div className="topActions">
@@ -494,10 +499,12 @@ export function App() {
                       <div className="botAddRow">
                         <select
                           value={botDifficulty}
-                          onChange={(event) => setBotDifficulty(event.target.value as 'foolish' | 'simple')}
+                          onChange={(event) => setBotDifficulty(event.target.value as BotDifficulty)}
                         >
                           <option value="foolish">愚蠢</option>
                           <option value="simple">简单</option>
+                          <option value="medium">中等</option>
+                          <option value="hard">困难</option>
                         </select>
                         <button className="secondaryButton" onClick={() => addBot(botDifficulty)}>
                           添加人机
