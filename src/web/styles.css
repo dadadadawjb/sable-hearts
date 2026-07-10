@@ -134,23 +134,6 @@ select {
   gap: 10px;
 }
 
-.siteFooter {
-  display: flex;
-  justify-content: center;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid #d5ddd8;
-}
-
-.visitorBadgeLink {
-  display: inline-flex;
-  line-height: 0;
-}
-
-.visitorBadgeImage {
-  height: 20px;
-}
-
 .modalBackdrop {
   position: fixed;
   z-index: 100;
