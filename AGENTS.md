@@ -8,6 +8,7 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
 
 - Whenever the code structure is changed, added to, or deleted from, update the "Code Structure" and "Important Files" sections in this file at the same time.
 - Whenever the codes are modified, check whether README.md needs updates for user-facing setup.
+- When the production site URL or custom domain changes, update the absolute URLs in `index.html` (`canonical`, `og:url`, `og:image`, `twitter:image`) and any deployment links in `README.md`.
 - Whenever some features are changed, added to, or deleted from, update the tests and run tests.
 - Whenever code is modified, added, or removed, assess whether the version in `package.json` should be bumped. Before changing it, tell the user whether a bump is needed; when it is, recommend the exact next SemVer version and ask for approval.
 
@@ -32,6 +33,13 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
 ```
 
 ## Important Files
+
+### `index.html`
+
+- Browser entry HTML that mounts the React app.
+- Defines page title, SEO metadata (`description`, `keywords`), and social preview tags (`og:*`, `twitter:*`).
+- The production canonical URL is currently `https://sable-hearts.onrender.com/`.
+- When binding a custom domain, update every absolute URL in this file (`canonical`, `og:url`, `og:image`, `twitter:image`) to the new domain.
 
 ### `src/core/`
 
