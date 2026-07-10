@@ -8,7 +8,7 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
 
 - Whenever the code structure is changed, added to, or deleted from, update the "Code Structure" and "Important Files" sections in this file at the same time.
 - Whenever the codes are modified, check whether README.md needs updates for user-facing setup.
-- When the production site URL or custom domain changes, update the absolute URLs in `index.html` (`canonical`, `og:url`, `og:image`, `twitter:image`) and any deployment links in `README.md`.
+- When the production site URL or custom domain changes, update the absolute URLs in `index.html` (`canonical`, `og:url`, `og:image`, `twitter:image`), the Visitor Badge URLs in `src/web/App.tsx` (`productionSiteUrl`, `visitorBadgeImageUrl`), and any deployment links in `README.md`.
 - Whenever some features are changed, added to, or deleted from, update the tests and run tests.
 - Whenever code is modified, added, or removed, assess whether the version in `package.json` should be bumped. Before changing it, tell the user whether a bump is needed; when it is, recommend the exact next SemVer version and ask for approval.
 
@@ -122,6 +122,8 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
   - Connects to the backend through Socket.IO.
   - Manages UI state for login, room creation/joining, ready state, game start, card play, rules modal, room settings, and reconnect recovery.
  - Reads the application version from `package.json` and displays it in the top bar.
+ - Shows a [Visitor Badge](https://www.visitorbadge.io/) in the page footer for public visit counts.
+ - `productionSiteUrl` and `visitorBadgeImageUrl` currently point at `https://sable-hearts.onrender.com/`; update both when the production domain changes.
   - Defines frontend types that mirror backend room-state payloads, such as `PublicRoomState`, `SeatState`, and `RoomSession`.
 
 - `src/web/styles.css`

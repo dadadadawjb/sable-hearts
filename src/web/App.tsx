@@ -81,6 +81,10 @@ const socket = io(serverUrl, {
 
 const appVersion = packageJson.version;
 const githubRepoUrl = 'https://github.com/dadadadawjb/sable-hearts';
+const productionSiteUrl = 'https://sable-hearts.onrender.com/';
+const visitorBadgeStatusUrl = `https://visitorbadge.io/status?path=${encodeURIComponent(productionSiteUrl)}`;
+const visitorBadgeImageUrl =
+  'https://visitorbadge.io/api/combined/?path=sable-hearts.onrender.com&label=Visitors&color=315449&countColor=176c54';
 
 export function App() {
   const [roomState, setRoomState] = useState<PublicRoomState | null>(null);
@@ -531,6 +535,11 @@ export function App() {
           </div>
         </section>
       )}
+      <footer className="siteFooter">
+        <a className="visitorBadgeLink" href={visitorBadgeStatusUrl} target="_blank" rel="noopener noreferrer">
+          <img className="visitorBadgeImage" src={visitorBadgeImageUrl} alt="本站访问量" />
+        </a>
+      </footer>
     </main>
   );
 
