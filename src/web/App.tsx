@@ -80,6 +80,7 @@ const socket = io(serverUrl, {
 });
 
 const appVersion = packageJson.version;
+const githubRepoUrl = 'https://github.com/dadadadawjb/sable-hearts';
 
 export function App() {
   const [roomState, setRoomState] = useState<PublicRoomState | null>(null);
@@ -288,6 +289,11 @@ export function App() {
           </div>
         </div>
         <div className="topActions">
+          <a className="secondaryButton githubStarButton" href={githubRepoUrl} target="_blank" rel="noopener noreferrer">
+            <HeartIcon />
+            Star on GitHub
+            <GitHubIcon />
+          </a>
           <button className="secondaryButton" onClick={() => setShowRules(true)}>
             规则
           </button>
@@ -902,6 +908,22 @@ function loadRoomSession(roomCode: string): RoomSession | null {
 
 function clearRoomSession(roomCode: string): void {
   window.localStorage.removeItem(roomSessionKey(roomCode));
+}
+
+function HeartIcon() {
+  return (
+    <svg className="githubStarIcon heartIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+    </svg>
+  );
+}
+
+function GitHubIcon() {
+  return (
+    <svg className="githubStarIcon githubIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.04-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.36-1.76-1.36-1.76-1.08-.74.08-.73.08-.73 1.2.08 1.83 1.24 1.83 1.24 1.07 1.83 2.8 1.3 3.49.99.11-.77.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.17 0 0 1.01-.32 3.3 1.23.96-.27 1.98-.41 3.02-.41 1.04 0 2.07.14 3.02.41 2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.25 2.87.12 3.17.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22 0 1.61-.01 2.9-.01 3.29 0 .32.22.7.83.58C20.56 21.8 24 17.3 24 12 24 5.37 18.63 0 12 0z" />
+    </svg>
+  );
 }
 
 function emitAck<T>(event: string, payload: unknown): Promise<Ack<T>> {

@@ -36,8 +36,31 @@ button:disabled {
 .secondaryButton {
   min-height: 36px;
   padding: 0 12px;
+  border-radius: 8px;
   color: #315449;
   background: #dce8e2;
+}
+
+.githubStarButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.githubStarIcon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.heartIcon {
+  fill: #d64545;
+}
+
+.githubIcon {
+  fill: currentColor;
 }
 
 input,
