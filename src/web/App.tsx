@@ -203,7 +203,28 @@ export function App() {
   async function joinRoom() {
     if (!auth) return;
     setError('');
-    const response = await emitAck<RoomSession>('joinRoom', { authToken: auth.token, roomCode: roomCodeInput });
+    const roomCode = roomCodeInput.trim().toUpperCase();
+    if (!roomCode) {
+      setError('请输入房间号');
+      return;
+    }
+
+    // If we already have a saved session for this room (e.g. we got disconnected),
+    // try to reconnect to our existing seat before creating a new one.
+    const savedRoomSession = loadRoomSession(roomCode);
+    if (savedRoomSession) {
+      const reconnect = await emitAck<RoomSession>('reconnectRoom', savedRoomSession);
+      if (reconnect.ok) {
+        saveRoomSession(reconnect);
+        setRoomSession(reconnect);
+        window.history.replaceState({}, '', `/room/${reconnect.roomCode}`);
+        return;
+      }
+      // Stale session (server restarted, seat removed, etc.); drop it and fall back to join.
+      clearRoomSession(roomCode);
+    }
+
+    const response = await emitAck<RoomSession>('joinRoom', { authToken: auth.token, roomCode });
     if (!response.ok) {
       setError(response.error);
       return;
