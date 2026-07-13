@@ -55,8 +55,16 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.starIcon {
+  fill: #f5c518;
+}
+
 .heartIcon {
   fill: #d64545;
+}
+
+.coffeeIcon {
+  fill: #ff813f;
 }
 
 .githubIcon {

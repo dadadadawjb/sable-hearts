@@ -84,6 +84,7 @@ const socket = io(serverUrl, {
 
 const appVersion = packageJson.version;
 const githubRepoUrl = 'https://github.com/dadadadawjb/sable-hearts';
+const buyMeACoffeeUrl = 'https://buymeacoffee.com/junbowang';
 
 export function App() {
   const [roomState, setRoomState] = useState<PublicRoomState | null>(null);
@@ -313,17 +314,20 @@ export function App() {
         <div className="brandBlock">
           <img className="brandLogo" src="/assets/logo.png" alt="" aria-hidden="true" />
           <div>
-            <h1>拱猪</h1>
-            <p>
-              {roomState ? `房间 ${roomState.roomCode}` : auth ? `账号 ${auth.user.username}` : '线上牌桌'} · v{appVersion}
-            </p>
+            <h1>拱猪 | Sable Hearts</h1>
+            <p>v{appVersion}</p>
           </div>
         </div>
         <div className="topActions">
           <a className="secondaryButton githubStarButton" href={githubRepoUrl} target="_blank" rel="noopener noreferrer">
-            <HeartIcon />
+            <StarIcon />
             Star on GitHub
             <GitHubIcon />
+          </a>
+          <a className="secondaryButton githubStarButton" href={buyMeACoffeeUrl} target="_blank" rel="noopener noreferrer">
+            <HeartIcon />
+            Buy Me a Coffee
+            <CoffeeIcon />
           </a>
           <button className="secondaryButton" onClick={() => setShowRules(true)}>
             规则
@@ -971,10 +975,26 @@ function clearRoomSession(roomCode: string): void {
   window.localStorage.removeItem(roomSessionKey(roomCode));
 }
 
+function StarIcon() {
+  return (
+    <svg className="githubStarIcon starIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2l2.9 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 7.1-1.01L12 2z" />
+    </svg>
+  );
+}
+
 function HeartIcon() {
   return (
     <svg className="githubStarIcon heartIcon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+    </svg>
+  );
+}
+
+function CoffeeIcon() {
+  return (
+    <svg className="githubStarIcon coffeeIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18 8h-1V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4h1a3 3 0 0 0 0-6zm-3 6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h10v8zm3-2a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM5 20h12v2H5z" />
     </svg>
   );
 }
