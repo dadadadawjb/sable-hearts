@@ -13,6 +13,14 @@ export interface ScoreBreakdown {
   transformedCardIds: string[];
 }
 
+export const DEFAULT_COIN_RATE = 0.01;
+
+export interface CoinSettlement {
+  previousCoins: number[];
+  roundCoins: number[];
+  totalCoins: number[];
+}
+
 export function rawCardPoint(card: Card): number {
   if (card.suit === 'spade' && card.rank === 12) return -100;
   if (card.suit === 'diamond' && card.rank === 11) return 100;
@@ -52,6 +60,31 @@ export function calculateCoins(scores: number[], alpha: number): number[] {
   });
 
   return coins;
+}
+
+export function calculateSettledCoins(
+  previousCoins: number[],
+  scores: number[],
+  alpha: number,
+  accumulate: boolean,
+): number[] {
+  return calculateCoinSettlement(previousCoins, scores, alpha, accumulate).totalCoins;
+}
+
+export function calculateCoinSettlement(
+  previousCoins: number[],
+  scores: number[],
+  alpha: number,
+  accumulate: boolean,
+): CoinSettlement {
+  const roundCoins = calculateCoins(scores, alpha);
+  const startingCoins = roundCoins.map((_coins, index) => (accumulate ? previousCoins[index] ?? 0 : 0));
+
+  return {
+    previousCoins: startingCoins,
+    roundCoins,
+    totalCoins: roundCoins.map((coins, index) => startingCoins[index] + coins),
+  };
 }
 
 export function calculateScore(capturedCards: Card[], config: GameConfig): ScoreBreakdown {

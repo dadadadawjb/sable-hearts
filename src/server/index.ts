@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { cardLabel } from '../core/cards';
 import { getLegalCards, playCard, createGame, pickLowestScoreLeader, type GameState } from '../core/game';
-import { calculateCoins, calculateScore, isClubTen, rawCardPoint } from '../core/scoring';
+import { calculateCoinSettlement, calculateScore, DEFAULT_COIN_RATE, isClubTen, rawCardPoint } from '../core/scoring';
 import { isSupportedPlayerCount, type PlayerCount } from '../core/config';
 import { chooseBotDecision, isBotDifficulty, type BotDecision, type BotDifficulty } from '../core/bot';
 import { getUserFromToken, loginUser, registerUser, requireAuth, type AuthSession } from './auth';
@@ -24,6 +24,9 @@ interface Seat {
   socketId: string | null;
   isBot: boolean;
   botDifficulty: BotDifficulty | null;
+  coins: number;
+  previousCoins: number;
+  roundCoins: number;
 }
 
 interface Room {
@@ -40,6 +43,7 @@ interface RoomSettings {
   showHistory: boolean;
   historyLimit: number;
   coinRate: number;
+  accumulateCoins: boolean;
 }
 
 type Ack<T> = (response: ({ ok: true } & T) | { ok: false; error: string }) => void;
@@ -81,7 +85,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('createRoom', (payload: { authToken?: string; playerCount?: number }, ack?: Ack<{ roomCode: string; playerId: string; token: string }>) => {
+  socket.on('createRoom', (payload: { authToken?: string; playerCount?: number; coinRate?: number; accumulateCoins?: boolean }, ack?: Ack<{ roomCode: string; playerId: string; token: string }>) => {
     reply(ack, () => {
       const user = requireAuth(payload.authToken);
       const playerCount = Number(payload.playerCount);
@@ -102,6 +106,9 @@ io.on('connection', (socket) => {
         socketId: socket.id,
         isBot: false,
         botDifficulty: null,
+        coins: 0,
+        previousCoins: 0,
+        roundCoins: 0,
       };
 
       const room: Room = {
@@ -110,7 +117,7 @@ io.on('connection', (socket) => {
         hostPlayerId: playerId,
         seats: [seat],
         game: null,
-        settings: defaultRoomSettings(),
+        settings: defaultRoomSettings(payload),
         createdAt: Date.now(),
       };
 
@@ -147,6 +154,9 @@ io.on('connection', (socket) => {
         socketId: socket.id,
         isBot: false,
         botDifficulty: null,
+        coins: 0,
+        previousCoins: 0,
+        roundCoins: 0,
       };
 
       room.seats.push(seat);
@@ -206,6 +216,9 @@ io.on('connection', (socket) => {
           socketId: null,
           isBot: true,
           botDifficulty: difficulty,
+          coins: 0,
+          previousCoins: 0,
+          roundCoins: 0,
         };
 
         room.seats.push(botSeat);
@@ -257,7 +270,18 @@ io.on('connection', (socket) => {
           throw new Error('只有房主可以修改设置');
         }
 
+        if (
+          room.settings.accumulateCoins &&
+          payload.coinRate !== undefined &&
+          normalizeCoinRate(payload.coinRate, room.settings.coinRate) !== room.settings.coinRate
+        ) {
+          throw new Error('累积金币房间不能修改金币比率');
+        }
+
         room.settings = normalizeRoomSettings(payload, room.settings);
+        if (!room.settings.accumulateCoins && room.game?.status === 'finished') {
+          settleRoomCoins(room, 'playing');
+        }
         broadcastRoom(room.code);
         return {};
       });
@@ -298,7 +322,9 @@ io.on('connection', (socket) => {
         throw new Error('没有指定要出的牌');
       }
 
+      const previousStatus = room.game.status;
       room.game = playCard(room.game, seat.playerId, payload.cardId);
+      settleRoomCoins(room, previousStatus);
       broadcastRoom(room.code);
       maybeRunBots(room.code);
       return {};
@@ -319,6 +345,18 @@ io.on('connection', (socket) => {
       }
 
       const leaderId = pickLowestScoreLeader(room.game.players);
+      if (!room.settings.accumulateCoins) {
+        room.seats.forEach((candidate) => {
+          candidate.coins = 0;
+          candidate.previousCoins = 0;
+          candidate.roundCoins = 0;
+        });
+      } else {
+        room.seats.forEach((candidate) => {
+          candidate.previousCoins = candidate.coins;
+          candidate.roundCoins = 0;
+        });
+      }
       room.game = createRoomGame(room, leaderId);
       broadcastRoom(room.code);
       maybeRunBots(room.code);
@@ -359,21 +397,18 @@ function publicRoomState(room: Room, viewerId: string) {
       scoringCards: gamePlayer ? getScoringCards(gamePlayer.captured) : [],
     };
   });
-  const coins =
-    game?.status === 'finished'
-      ? calculateCoins(
-          seatStates.map((seat) => seat.score),
-          room.settings.coinRate,
-        )
-      : seatStates.map(() => 0);
-
   return {
     roomCode: room.code,
     playerCount: room.playerCount,
     hostPlayerId: room.hostPlayerId,
     viewerId,
     settings: room.settings,
-    seats: seatStates.map((seat, index) => ({ ...seat, coins: coins[index] })),
+    seats: seatStates.map((seat, index) => ({
+      ...seat,
+      coins: room.seats[index].coins,
+      previousCoins: room.seats[index].previousCoins,
+      roundCoins: room.seats[index].roundCoins,
+    })),
     game: game
       ? {
           id: game.id,
@@ -436,6 +471,22 @@ function createRoomGame(room: Room, leaderId?: string): GameState {
   );
 }
 
+function settleRoomCoins(room: Room, previousStatus: GameState['status']): void {
+  if (!room.game || previousStatus === 'finished' || room.game.status !== 'finished') return;
+
+  const settlement = calculateCoinSettlement(
+    room.seats.map((seat) => seat.coins),
+    room.game.players.map((player) => player.score),
+    room.settings.coinRate,
+    room.settings.accumulateCoins,
+  );
+  room.seats.forEach((seat, index) => {
+    seat.previousCoins = settlement.previousCoins[index];
+    seat.roundCoins = settlement.roundCoins[index];
+    seat.coins = settlement.totalCoins[index];
+  });
+}
+
 const BOT_PLAY_DELAY_MS = 700;
 const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let botLogWriteQueue = Promise.resolve();
@@ -481,6 +532,7 @@ function maybeRunBots(roomCode: string): void {
       const startedAt = Date.now();
       const decision = chooseBotDecision(gameBeforePlay, activeSeat.playerId, activeSeat.botDifficulty);
       activeRoom.game = playCard(gameBeforePlay, activeSeat.playerId, decision.card.id);
+      settleRoomCoins(activeRoom, gameBeforePlay.status);
       writeBotDecisionLog(activeRoom, activeSeat, gameBeforePlay, decision, Date.now() - startedAt);
       broadcastRoom(roomCode);
     } catch (error) {
@@ -555,11 +607,12 @@ function writeBotDecisionLog(
   });
 }
 
-function defaultRoomSettings(): RoomSettings {
+function defaultRoomSettings(payload?: { coinRate?: number; accumulateCoins?: boolean }): RoomSettings {
   return {
     showHistory: true,
     historyLimit: 5,
-    coinRate: 1,
+    coinRate: normalizeCoinRate(payload?.coinRate, DEFAULT_COIN_RATE),
+    accumulateCoins: payload?.accumulateCoins === true,
   };
 }
 
@@ -572,8 +625,14 @@ function normalizeRoomSettings(
   return {
     showHistory: typeof payload.showHistory === 'boolean' ? payload.showHistory : current.showHistory,
     historyLimit: Number.isFinite(parsedLimit) ? Math.max(1, Math.min(50, Math.floor(parsedLimit))) : current.historyLimit,
-    coinRate: Number.isFinite(parsedCoinRate) ? Math.max(0, Math.min(1000, parsedCoinRate)) : current.coinRate,
+    coinRate: current.accumulateCoins ? current.coinRate : normalizeCoinRate(parsedCoinRate, current.coinRate),
+    accumulateCoins: current.accumulateCoins,
   };
+}
+
+function normalizeCoinRate(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1000, parsed)) : fallback;
 }
 
 function getScoringCards(cards: GameState['players'][number]['captured']) {

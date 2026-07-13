@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type PointerEvent } from 'react';
 import { io } from 'socket.io-client';
 import packageJson from '../../package.json';
-import { cardLabel, isRedSuit, rankLabel, suitLabel, type BotDifficulty, type Card } from '../core';
+import { cardLabel, DEFAULT_COIN_RATE, isRedSuit, rankLabel, suitLabel, type BotDifficulty, type Card } from '../core';
 
 type SeatState = {
   seat: number;
@@ -16,6 +16,8 @@ type SeatState = {
   capturedCount: number;
   score: number;
   coins: number;
+  previousCoins: number;
+  roundCoins: number;
   scoringCards: Card[];
 };
 
@@ -28,6 +30,7 @@ type PublicRoomState = {
     showHistory: boolean;
     historyLimit: number;
     coinRate: number;
+    accumulateCoins: boolean;
   };
   seats: SeatState[];
   game: {
@@ -92,6 +95,8 @@ export function App() {
   const [password, setPassword] = useState('');
   const [roomCodeInput, setRoomCodeInput] = useState(getRoomCodeFromPath());
   const [playerCount, setPlayerCount] = useState(4);
+  const [coinRate, setCoinRate] = useState(DEFAULT_COIN_RATE);
+  const [accumulateCoins, setAccumulateCoins] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('simple');
   const [connected, setConnected] = useState(socket.connected);
   const [error, setError] = useState('');
@@ -189,7 +194,12 @@ export function App() {
   async function createRoom() {
     if (!auth) return;
     setError('');
-    const response = await emitAck<RoomSession>('createRoom', { authToken: auth.token, playerCount });
+    const response = await emitAck<RoomSession>('createRoom', {
+      authToken: auth.token,
+      playerCount,
+      coinRate,
+      accumulateCoins,
+    });
     if (!response.ok) {
       setError(response.error);
       return;
@@ -380,6 +390,25 @@ export function App() {
                 ))}
               </select>
             </label>
+            <label className="checkRow">
+              <input
+                type="checkbox"
+                checked={accumulateCoins}
+                onChange={(event) => setAccumulateCoins(event.target.checked)}
+              />
+              累积金币
+            </label>
+            <label>
+              金币比率 alpha
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                step={0.01}
+                value={coinRate}
+                onChange={(event) => setCoinRate(Number(event.target.value))}
+              />
+            </label>
             <button onClick={createRoom}>创建</button>
           </div>
 
@@ -411,6 +440,7 @@ export function App() {
                     <span>{seat.handCount} 手牌</span>
                     <span>{seat.capturedCount} 收牌</span>
                     <span>{seat.score} 分</span>
+                    <span>{formatCoins(seat.coins)} 金币</span>
                   </div>
                   {seat.scoringCards.length > 0 ? (
                     <div className="seatScoreCards">
@@ -618,6 +648,7 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
           <section>
             <h3>金币规则</h3>
             <pre>{`房主可设置分数兑换金币的比率alpha
+创建房间时可选择是否跨局累积金币；累积房间的金币比率创建后不可修改
 当某玩家分数为负a分时，该玩家负a*alpha金币
 当某玩家分数为正a分时，均匀让其他n-1名玩家额外负a/(n-1)*alpha金币，该玩家则0金币`}</pre>
           </section>
@@ -639,6 +670,10 @@ function RoomSettingsPanel({
   return (
     <div className="settingsPanel">
       <h3>房间设置</h3>
+      <label className="checkRow">
+        <input type="checkbox" checked={roomState.settings.accumulateCoins} disabled readOnly />
+        累积金币
+      </label>
       <label className="checkRow">
         <input
           type="checkbox"
@@ -667,7 +702,7 @@ function RoomSettingsPanel({
           max={1000}
           step={0.01}
           value={roomState.settings.coinRate}
-          disabled={!canEdit}
+          disabled={!canEdit || roomState.settings.accumulateCoins}
           onChange={(event) => onChange({ coinRate: Number(event.target.value) })}
         />
       </label>
@@ -743,7 +778,12 @@ function FinalSummary({
           <div key={seat.playerId} className="summaryItem">
             <div className="summaryTitle">
               <strong>{seat.name}</strong>
-              <span>{seat.score} 分 / {formatCoins(seat.coins)} 金币</span>
+              <span>
+                {seat.score} 分 /{' '}
+                {roomState.settings.accumulateCoins
+                  ? `${formatCoins(seat.previousCoins)} + (${formatCoins(seat.roundCoins)}) = ${formatCoins(seat.coins)} 金币`
+                  : `${formatCoins(seat.coins)} 金币`}
+              </span>
             </div>
             <div className="scoringCards">
               {seat.scoringCards.length > 0 ? (

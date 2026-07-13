@@ -4,12 +4,15 @@ import {
   BOT_DIFFICULTIES,
   BOT_STRATEGY_CONFIG,
   buildDeck,
+  calculateCoinSettlement,
   calculateScore,
   calculateCoins,
+  calculateSettledCoins,
   chooseBotCard,
   chooseBotDecision,
   createCard,
   createGame,
+  DEFAULT_COIN_RATE,
   getGameConfig,
   getLegalCards,
   pickLowestScoreLeader,
@@ -98,6 +101,10 @@ describe('trick rules', () => {
 });
 
 describe('scoring', () => {
+  it('defaults the room coin rate to 0.01', () => {
+    expect(DEFAULT_COIN_RATE).toBe(0.01);
+  });
+
   it('awards the club ten only bonus', () => {
     expect(calculateScore([club(10, 0)], getGameConfig(4)).score).toBe(50);
     expect(calculateScore([club(10, 0), club(10, 1)], getGameConfig(6)).score).toBe(200);
@@ -148,6 +155,26 @@ describe('scoring', () => {
     expect(coins[1]).toBeCloseTo(-66.6667);
     expect(coins[2]).toBeCloseTo(-66.6667);
     expect(coins[3]).toBeCloseTo(-66.6667);
+  });
+
+  it('replaces previous coins when accumulation is disabled', () => {
+    const coins = calculateSettledCoins([-5, -10, 0], [100, 50, 0], 0.01, false);
+
+    expect(coins[0]).toBeCloseTo(-0.25);
+    expect(coins[1]).toBeCloseTo(-0.5);
+    expect(coins[2]).toBeCloseTo(-0.75);
+  });
+
+  it('adds round coins to previous totals when accumulation is enabled', () => {
+    const settlement = calculateCoinSettlement([-5, -10, 0], [100, 50, 0], 0.01, true);
+
+    expect(settlement.previousCoins).toEqual([-5, -10, 0]);
+    expect(settlement.roundCoins[0]).toBeCloseTo(-0.25);
+    expect(settlement.roundCoins[1]).toBeCloseTo(-0.5);
+    expect(settlement.roundCoins[2]).toBeCloseTo(-0.75);
+    expect(settlement.totalCoins[0]).toBeCloseTo(-5.25);
+    expect(settlement.totalCoins[1]).toBeCloseTo(-10.5);
+    expect(settlement.totalCoins[2]).toBeCloseTo(-0.75);
   });
 });
 

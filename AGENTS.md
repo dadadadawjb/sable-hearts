@@ -75,6 +75,8 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
   - `rawCardPoint` defines base point values for the queen of spades, jack of diamonds, hearts, and other cards.
   - `calculateScore` handles heart sweeps, queen of spades conversion, club ten multipliers, and club-ten-only bonuses.
   - `calculateCoins` converts scores to coin losses based on the room's exchange rate.
+  - `calculateSettledCoins` either replaces the previous round's coins or adds the new settlement for cumulative rooms.
+  - `calculateCoinSettlement` returns the previous, current-round, and total coin values used by cumulative settlement summaries.
 
 - `src/core/index.ts`
   - Barrel export for the core modules.
@@ -99,6 +101,7 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
   - Manages in-memory rooms through `rooms`.
   - Handles Socket.IO events for registration, login, auth resume, room creation, room join, reconnect, ready state, adding/removing bots, game start, card play, and game restart.
  - Bots are seats with `isBot: true` and no socket. `addBot`/`removeBot` are host-only and only allowed before the game starts. `maybeRunBots` schedules a bot's move (via `chooseBotDecision`) whenever the current player is a bot, chaining through consecutive bot turns.
+  - Room seats retain settled coin balances. Rooms can opt into cumulative coins at creation; that choice and the cumulative room's coin rate are immutable after creation.
  - Actual bot decisions are appended as structured JSONL to `logs/bot-decisions-YYYY-MM-DD_HH-mm-ss-SSS-ROOMCODE.jsonl`, keyed by room creation time and room code; rollout-internal simulated moves are not logged.
   - `publicRoomState` builds the room state for each viewer so other players' hands are not sent to the current player.
   - After a production build, if `dist/` exists, this file serves the frontend static files.
@@ -121,6 +124,7 @@ Sable Hearts is a multiplayer online Gong Zhu / 拱猪 card game. The project us
   - Main frontend UI and interaction logic.
   - Connects to the backend through Socket.IO.
   - Manages UI state for login, room creation/joining, ready state, game start, card play, rules modal, room settings, and reconnect recovery.
+  - Room creation includes the coin rate and cumulative-coin choice. Seat coin values come from completed-round settlements, and cumulative final summaries show the previous total plus the current round before the new total.
  - Reads the application version from `package.json` and displays it in the top bar.
   - Defines frontend types that mirror backend room-state payloads, such as `PublicRoomState`, `SeatState`, and `RoomSession`.
 
